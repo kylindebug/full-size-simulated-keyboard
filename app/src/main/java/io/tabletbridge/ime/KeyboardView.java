@@ -29,6 +29,17 @@ public final class KeyboardView extends View {
     }
     private final KeyEngine engine;
     private final Actions actions;
+    private final Runnable repeatKey=new Runnable() {
+        @Override public void run() {
+            if(!engine.repeat()) { clearTouches(); return; }
+            scheduleRepeat();
+        }
+    };
+    private void scheduleRepeat() {
+        removeCallbacks(repeatKey);
+        long delay=engine.nextRepeatDelay();
+        if(delay>=0) postDelayed(repeatKey,delay);
+    }
     private final KeyboardLayout layout=new KeyboardLayout();
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final RectF box=new RectF(),wallpaperBox=new RectF();
@@ -69,7 +80,7 @@ public final class KeyboardView extends View {
     }
     public void setCollapsed(boolean value) { finishEditing(); collapsed=value; invalidate(); }
     public boolean collapsed() { return collapsed; }
-    public void clearTouches() { fingers.clear(); moving=-1; sliding=-1; resizeEdges=0; setAlpha(1f); engine.releaseAll(); invalidate(); }
+    public void clearTouches() { removeCallbacks(repeatKey); fingers.clear(); moving=-1; sliding=-1; resizeEdges=0; setAlpha(1f); engine.releaseAll(); invalidate(); }
     public void finishEditing() { clearTouches(); hideModeTip(); sliderVisible=false; editingSize=false; updateGestureExclusion(); }
     private void updateGestureExclusion() {
         if(Build.VERSION.SDK_INT<29) return;
@@ -277,6 +288,7 @@ public final class KeyboardView extends View {
             case MotionEvent.ACTION_CANCEL:
                 if(moving>=0) actions.savePosition(); clearTouches(); break;
         }
+        scheduleRepeat();
         return true;
     }
     @Override public boolean performClick() { super.performClick(); return true; }

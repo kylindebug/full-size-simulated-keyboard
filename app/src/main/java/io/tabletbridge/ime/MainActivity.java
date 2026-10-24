@@ -12,6 +12,7 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Switch;
 
 public final class MainActivity extends Activity {
     private TextView state;
@@ -43,6 +44,13 @@ public final class MainActivity extends Activity {
         text(column,"在 Moonlight 中使用",21,Color.WHITE);
         text(column,"连接 Sunshine 后，在 Moonlight 串流画面用三指轻点呼出输入法（也可使用客户端的键盘入口）。远端 Windows 建议先使用英文 US 布局。",16,0xffc7d2df);
         text(column,"按下与弹起",21,Color.WHITE);
+        Switch repeatSwitch=new Switch(this);
+        repeatSwitch.setText("Moonlight 文本连发兼容"); repeatSwitch.setTextColor(Color.WHITE);
+        repeatSwitch.setChecked(getSharedPreferences("panel",MODE_PRIVATE).getBoolean("compatibilityRepeat",false));
+        repeatSwitch.setOnCheckedChangeListener((button,checked)->
+                getSharedPreferences("panel",MODE_PRIVATE).edit().putBoolean("compatibilityRepeat",checked).apply());
+        column.addView(repeatSwitch,new LinearLayout.LayoutParams(-1,dp(56)));
+        text(column,"如果串流中长按只删除或输入一次，可开启此项，再重新呼出键盘。普通键长按会连续点击，修饰键仍保持按住。此模式用于文本输入；玩游戏时请关闭，以保持 WASD 等按键持续按住。主机自身也连发时，速度可能叠加。",14,0xffc7d2df);
         text(column,"默认物理模式：手指按下发送 DOWN，保持接触就保持按住，松开发送 UP。可同时按住 Ctrl、Shift、Alt、Win 和其他按键；移出键帽会释放，不会滑动输入邻键。长按重复由远端主机处理。",16,0xffc7d2df);
         text(column,"悬浮与单手操作",21,Color.WHITE);
         text(column,"控件位于小键盘上方。按住「移动」拖动键盘；点「大小」进入调整模式，拖边改变宽高比例、拖角等比缩放，点「完成」恢复输入。\n\n「透明」打开滑条，左右拖动调整背景透明度，文字与键帽保留可读性；「收起」变为小浮条；「物理」切换修饰键锁定；「释放」松开全部按键。",16,0xffc7d2df);
