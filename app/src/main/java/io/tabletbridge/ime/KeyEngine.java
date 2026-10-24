@@ -10,16 +10,17 @@ import java.util.function.LongSupplier;
 public final class KeyEngine {
     public interface Sink { boolean send(Event event); }
     public static final class Event {
-        public final int code, meta;
+        public final int code, meta, repeatCount;
         public final boolean down;
         public final long downTime, eventTime;
-        Event(int code, boolean down, int meta, long downTime, long eventTime) {
+        Event(int code, boolean down, int meta, long downTime, long eventTime, int repeatCount) {
             this.code = code; this.down = down; this.meta = meta;
             this.downTime = downTime; this.eventTime = eventTime;
+            this.repeatCount = repeatCount;
         }
     }
     private static final class Press {
-        final long started;
+        long started;
         int owners;
         Press(long time) { started = time; owners = 1; }
     }
@@ -28,8 +29,53 @@ public final class KeyEngine {
     private final Sink sink;
     private final LongSupplier clock;
     private boolean sticky;
+    private boolean compatibilityRepeat;
     private int lockMeta;
+    private Integer repeating;
+    private long nextRepeat;
+    private int repeatCount;
+    private long repeatDelay = 500, repeatInterval = 50;
     public KeyEngine(Sink sink, LongSupplier clock) { this.sink = sink; this.clock = clock; }
+
+    public void setRepeatTiming(long delay, long interval) {
+        if (delay < 0 || interval <= 0) throw new IllegalArgumentException("Invalid repeat timing");
+        repeatDelay = delay; repeatInterval = interval;
+    }
+    public void setCompatibilityRepeat(boolean value) {
+        releaseAll(); compatibilityRepeat = value;
+    }
+    public static boolean isRepeatable(int code) {
+        // Modifiers and lock/system keys do not auto-repeat on a physical keyboard.
+        return modifier(code) == 0 && code != 115 && code != 116 && code != 143
+                && code != 120 && code != 121 && code != 318;
+    }
+    /** Delay until the next repeat, or -1 when no repeat is pending. */
+    public long nextRepeatDelay() {
+        return repeating == null ? -1 : Math.max(0, nextRepeat - clock.getAsLong());
+    }
+    /** Called on the input thread. Never catch up with a burst after a stalled frame. */
+    public boolean repeat() {
+        if (repeating == null) return true;
+        long now = clock.getAsLong();
+        if (now < nextRepeat) return true;
+        int code = repeating;
+        Press press = held.get(code);
+        nextRepeat = now + repeatInterval;
+        boolean ok;
+        if (compatibilityRepeat) {
+            // Moonlight filters repeatCount > 0, and Sunshine filters duplicate DOWNs.
+            // Opt-in text mode therefore sends complete transitions, never for modifiers.
+            ok = sink.send(new Event(code, false, meta(), press.started, now, 0));
+            if (ok) {
+                press.started = now;
+                ok = sink.send(new Event(code, true, meta(), now, now, 0));
+            }
+        } else {
+            ok = sink.send(new Event(code, true, meta(), press.started, now, ++repeatCount));
+        }
+        if (!ok) repeating = null;
+        return ok;
+    }
 
     public static int modifier(int code) {
         return switch (code) {
@@ -75,16 +121,25 @@ public final class KeyEngine {
         if (code == 115) lockMeta ^= 0x100000;
         if (code == 143) lockMeta ^= 0x200000;
         if (code == 116) lockMeta ^= 0x400000;
-        return sink.send(new Event(code, true, meta(), now, now));
+        boolean ok = sink.send(new Event(code, true, meta(), now, now, 0));
+        if (isRepeatable(code)) {
+            // Like hardware typematic, only the most recently pressed ordinary key repeats.
+            repeating = ok ? code : null;
+            repeatCount = 0;
+            nextRepeat = now + repeatDelay;
+        }
+        return ok;
     }
     private boolean release(int code) {
         Press press = held.get(code);
         if (press == null) return true;
         if (--press.owners > 0) return true;
         held.remove(code);
-        return sink.send(new Event(code, false, meta(), press.started, clock.getAsLong()));
+        if (repeating != null && repeating == code) repeating = null;
+        return sink.send(new Event(code, false, meta(), press.started, clock.getAsLong(), 0));
     }
     public void releaseAll() {
+        repeating = null;
         // Release ordinary keys before modifiers, including two fingers on the same key.
         ArrayList<Integer> codes = new ArrayList<>(held.keySet());
         codes.sort((a, b) -> Integer.compare(modifier(a) == 0 ? 0 : 1, modifier(b) == 0 ? 0 : 1));

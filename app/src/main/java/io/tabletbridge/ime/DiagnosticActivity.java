@@ -43,7 +43,7 @@ public final class DiagnosticActivity extends Activity {
             if(e.getAction()==KeyEvent.ACTION_DOWN) held.add(e.getKeyCode());
             else if(e.getAction()==KeyEvent.ACTION_UP) held.remove(e.getKeyCode());
             String name=KeyEvent.keyCodeToString(e.getKeyCode()).replace("KEYCODE_","");
-            lines.addFirst((e.getAction()==KeyEvent.ACTION_DOWN?"DOWN  ":"UP    ")+name+"   meta=0x"+Integer.toHexString(e.getMetaState())+"   held="+held.size());
+            lines.addFirst((e.getAction()==KeyEvent.ACTION_DOWN?"DOWN  ":"UP    ")+name+"   repeat="+e.getRepeatCount()+"   meta=0x"+Integer.toHexString(e.getMetaState())+"   held="+held.size());
             while(lines.size()>12) lines.removeLast(); invalidate();
         }
         @Override protected void onDraw(Canvas c) {

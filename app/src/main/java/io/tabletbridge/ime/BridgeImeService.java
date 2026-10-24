@@ -11,6 +11,7 @@ import android.view.InputDevice;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
@@ -36,6 +37,7 @@ public final class BridgeImeService extends InputMethodService implements Keyboa
         heightFraction=prefs.getFloat("heightFraction",0);
         preferredWidth=prefs.getFloat("preferredWidth",0); preferredHeight=prefs.getFloat("preferredHeight",0);
         engine=new KeyEngine(this::send,SystemClock::uptimeMillis);
+        engine.setRepeatTiming(ViewConfiguration.getKeyRepeatTimeout(),ViewConfiguration.getKeyRepeatDelay());
     }
     @Override public boolean onEvaluateFullscreenMode() { return false; }
     @Override public boolean onEvaluateInputViewShown() { super.onEvaluateInputViewShown(); return true; }
@@ -101,13 +103,14 @@ public final class BridgeImeService extends InputMethodService implements Keyboa
     @Override public void onStartInputView(EditorInfo info,boolean restarting) {
         super.onStartInputView(info,restarting);
         endSession(); session=getCurrentInputConnection();
+        engine.setCompatibilityRepeat(prefs.getBoolean("compatibilityRepeat",false));
         if(keyboard!=null) root.post(this::place);
     }
     private boolean send(KeyEngine.Event e) {
         boolean ok=false;
         if(session!=null) {
             KeyEvent event=new KeyEvent(e.downTime,e.eventTime,e.down?KeyEvent.ACTION_DOWN:KeyEvent.ACTION_UP,
-                    e.code,0,e.meta,KeyCharacterMap.VIRTUAL_KEYBOARD,0,
+                    e.code,e.repeatCount,e.meta,KeyCharacterMap.VIRTUAL_KEYBOARD,0,
                     KeyEvent.FLAG_SOFT_KEYBOARD|KeyEvent.FLAG_KEEP_TOUCH_MODE,InputDevice.SOURCE_KEYBOARD);
             try { ok=session.sendKeyEvent(event); } catch(RuntimeException ignored) { ok=false; }
         }
