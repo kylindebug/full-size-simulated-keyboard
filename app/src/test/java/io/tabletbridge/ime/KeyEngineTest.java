@@ -7,6 +7,7 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 public class KeyEngineTest {
+    private static final int NUM_ON = 0x200000;
     private KeyEngine engine;
     private final List<KeyEngine.Event> events=new ArrayList<>();
     private long time;
@@ -18,9 +19,9 @@ public class KeyEngineTest {
     }
     @Test public void multiTouchChordPreservesModifiers() {
         engine.pointerDown(0,113); engine.pointerDown(1,59); engine.pointerDown(2,51);
-        assertEquals(0x3041,events.get(2).meta); engine.pointerUp(2);
-        assertEquals(0x3041,events.get(3).meta); engine.pointerUp(0); assertEquals(0x41,engine.meta());
-        engine.pointerUp(1); assertEquals(0,engine.meta());
+        assertEquals(NUM_ON|0x3041,events.get(2).meta); engine.pointerUp(2);
+        assertEquals(NUM_ON|0x3041,events.get(3).meta); engine.pointerUp(0); assertEquals(NUM_ON|0x41,engine.meta());
+        engine.pointerUp(1); assertEquals(NUM_ON,engine.meta());
     }
     @Test public void twoFingersOnOneKeyRequireBothReleases() {
         engine.pointerDown(1,29); engine.pointerDown(2,29); assertEquals(1,events.size());
@@ -33,16 +34,16 @@ public class KeyEngineTest {
     @Test public void cancelReleasesOrdinaryKeysBeforeModifiers() {
         engine.pointerDown(0,113); engine.pointerDown(1,51); engine.pointerDown(2,51); engine.releaseAll();
         assertEquals(4,events.size()); assertEquals(51,events.get(2).code); assertEquals(113,events.get(3).code);
-        assertEquals(0,engine.meta()); engine.pointerUp(1); assertEquals(4,events.size());
+        assertEquals(NUM_ON,engine.meta()); engine.pointerUp(1); assertEquals(4,events.size());
     }
     @Test public void leftAndRightModifierHaveIndependentLifetimes() {
         engine.pointerDown(1,59); engine.pointerDown(2,60); engine.pointerUp(1);
-        assertEquals(0x81,engine.meta()); engine.pointerUp(2); assertEquals(0,engine.meta());
+        assertEquals(NUM_ON|0x81,engine.meta()); engine.pointerUp(2); assertEquals(NUM_ON,engine.meta());
     }
     @Test public void stickyModifiersLatchUntilSecondTap() {
         engine.setSticky(true); engine.pointerDown(0,113); engine.pointerUp(0);
         assertTrue(engine.isHeld(113)); engine.pointerDown(1,31); engine.pointerUp(1);
-        assertEquals(0x3000,events.get(1).meta); engine.pointerDown(0,113); engine.pointerUp(0);
+        assertEquals(NUM_ON|0x3000,events.get(1).meta); engine.pointerDown(0,113); engine.pointerUp(0);
         assertFalse(engine.isHeld(113)); assertEquals(4,events.size());
     }
     @Test public void modeChangeReleasesLatchedKeys() {
@@ -50,12 +51,13 @@ public class KeyEngineTest {
         assertFalse(engine.isHeld(57)); assertEquals(2,events.size());
     }
     @Test public void lockKeysToggleOncePerPress() {
-        engine.pointerDown(0,143); engine.pointerUp(0); assertEquals(0x200000,engine.meta());
         engine.pointerDown(0,143); engine.pointerUp(0); assertEquals(0,engine.meta());
+        engine.pointerDown(0,143); engine.pointerUp(0); assertEquals(NUM_ON,engine.meta());
+        assertTrue(events.isEmpty());
     }
     @Test public void sessionResetDoesNotCarryLocksToNextApp() {
         engine.pointerDown(1,115); engine.pointerDown(2,113); engine.resetSession();
-        assertEquals(0,engine.meta()); assertFalse(engine.isHeld(113));
+        assertEquals(NUM_ON,engine.meta()); assertFalse(engine.isHeld(113));
     }
     @Test public void failedDeliveryIsReportedAndStateCanBeReleased() {
         KeyEngine failing=new KeyEngine(e->false,()->1L); assertFalse(failing.pointerDown(1,29));
@@ -96,15 +98,15 @@ public class KeyEngineTest {
         for(int code:new int[]{57,58,59,60,113,114,117,118,115,116,143,120,121,318}) {
             repeatSetup(); engine.pointerDown(1,code); int meta=engine.meta();
             time=5000; engine.repeat();
-            assertEquals("code "+code,1,events.size()); assertEquals(-1,engine.nextRepeatDelay());
+            assertEquals("code "+code,code==143?0:1,events.size()); assertEquals(-1,engine.nextRepeatDelay());
             assertEquals(meta,engine.meta());
         }
     }
     @Test public void repeatsUseCurrentModifiersWithoutRestartingDelay() {
         repeatSetup(); engine.pointerDown(1,29); time=300; engine.pointerDown(2,59);
         assertEquals(300,engine.nextRepeatDelay()); time=600; engine.repeat();
-        assertEquals(0x41,events.get(2).meta);
-        engine.pointerUp(2); time=650; engine.repeat(); assertEquals(0,events.get(4).meta);
+        assertEquals(NUM_ON|0x41,events.get(2).meta);
+        engine.pointerUp(2); time=650; engine.repeat(); assertEquals(NUM_ON,events.get(4).meta);
     }
     @Test public void onlyNewestOrdinaryKeyRepeatsAndOlderKeyDoesNotResume() {
         repeatSetup(); engine.pointerDown(1,29); time=300; engine.pointerDown(2,30);
@@ -166,7 +168,7 @@ public class KeyEngineTest {
         engine.pointerDown(0,113); engine.pointerDown(1,67); time=600; engine.repeat();
         assertEquals(4,events.size());
         assertFalse(events.get(2).down); assertEquals(67,events.get(2).code);
-        assertEquals(0x3000,events.get(3).meta); assertTrue(engine.isHeld(113));
+        assertEquals(NUM_ON|0x3000,events.get(3).meta); assertTrue(engine.isHeld(113));
         engine.releaseAll(); time=1000; engine.repeat(); assertEquals(6,events.size());
         assertEquals(113,events.get(5).code); assertFalse(events.get(5).down);
     }
