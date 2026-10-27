@@ -20,17 +20,26 @@ public final class KeyEngine {
         }
     }
     private static final class Press {
+        final int eventCode;
+        final Output output;
+        int owners = 1;
+        Press(int eventCode, Output output) { this.eventCode = eventCode; this.output = output; }
+    }
+    private static final class Output {
         long started;
-        int owners;
-        Press(long time) { started = time; owners = 1; }
+        int owners = 1;
+        Output(long time) { started = time; }
     }
     private final Map<Integer, Press> held = new LinkedHashMap<>();
+    // Different physical keys may resolve to the same event (e.g. top-row 1 and keypad 1).
+    private final Map<Integer, Output> outputs = new LinkedHashMap<>();
     private final Map<Integer, Integer> pointers = new HashMap<>();
     private final Sink sink;
     private final LongSupplier clock;
     private boolean sticky;
     private boolean compatibilityRepeat;
-    private int lockMeta;
+    private static final int NUM_LOCK = 143, NUM_LOCK_ON = 0x200000;
+    private int lockMeta = NUM_LOCK_ON;
     private Integer repeating;
     private long nextRepeat;
     private int repeatCount;
@@ -59,7 +68,7 @@ public final class KeyEngine {
         long now = clock.getAsLong();
         if (now < nextRepeat) return true;
         int code = repeating;
-        Press press = held.get(code);
+        Output press = outputs.get(code);
         nextRepeat = now + repeatInterval;
         boolean ok;
         if (compatibilityRepeat) {
@@ -92,9 +101,11 @@ public final class KeyEngine {
         return value;
     }
     public boolean isHeld(int code) { return held.containsKey(code); }
+    public boolean numericMode() { return (lockMeta & NUM_LOCK_ON) != 0; }
+    public boolean isDimmed(int code) { return code == NUM_LOCK && !numericMode(); }
     public boolean isLit(int code) {
+        if (code == NUM_LOCK) return false;
         return isHeld(code) || (code == 115 && (lockMeta & 0x100000) != 0)
-                || (code == 143 && (lockMeta & 0x200000) != 0)
                 || (code == 116 && (lockMeta & 0x400000) != 0);
     }
     public boolean sticky() { return sticky; }
@@ -116,27 +127,90 @@ public final class KeyEngine {
     private boolean press(int code) {
         Press existing = held.get(code);
         if (existing != null) { existing.owners++; return true; }
+        if (code == NUM_LOCK) {
+            boolean ok = releaseKeypad();
+            held.put(code, new Press(-1, null));
+            // This is a local semantic mode, never a blind toggle of the remote host.
+            lockMeta ^= NUM_LOCK_ON;
+            return ok;
+        }
+        // Never let a held top-row fallback turn into Shift punctuation or an Alt
+        // shortcut mid-press. Lift and press the keypad again to start a native chord.
+        if (numericMode() && modifier(code) != 0 && !releaseKeypad()) return false;
+        int eventCode = resolve(code);
+        if (eventCode < 0) {
+            held.put(code, new Press(eventCode, null));
+            repeating = null;
+            return true; // Keypad 5 has no navigation action.
+        }
+        Output shared = outputs.get(eventCode);
+        if (shared != null) {
+            shared.owners++;
+            held.put(code, new Press(eventCode, shared));
+            return true;
+        }
         long now = clock.getAsLong();
-        held.put(code, new Press(now));
+        Output output = new Output(now);
+        outputs.put(eventCode, output);
+        held.put(code, new Press(eventCode, output));
         if (code == 115) lockMeta ^= 0x100000;
-        if (code == 143) lockMeta ^= 0x200000;
         if (code == 116) lockMeta ^= 0x400000;
-        boolean ok = sink.send(new Event(code, true, meta(), now, now, 0));
+        boolean ok = sink.send(new Event(eventCode, true, meta(), now, now, 0));
         if (isRepeatable(code)) {
             // Like hardware typematic, only the most recently pressed ordinary key repeats.
-            repeating = ok ? code : null;
+            repeating = ok ? eventCode : null;
             repeatCount = 0;
             nextRepeat = now + repeatDelay;
         }
+        return ok;
+    }
+    private static boolean isModeKeypad(int code) {
+        return (code >= 144 && code <= 153) || code == 158;
+    }
+    private int resolve(int code) {
+        if (!isModeKeypad(code)) return code;
+        if (numericMode()) {
+            // Preserve native keypad identity for Shift, Alt codes and other shortcuts.
+            // Their interpretation belongs to the host; ordinary input is deterministic.
+            for (int heldCode : held.keySet()) if (modifier(heldCode) != 0) return code;
+            return code == 158 ? 56 : 7 + code - 144; // period or top-row 0..9
+        }
+        return switch (code) {
+            case 144 -> 124; // 0: Insert
+            case 145 -> 123; // 1: End
+            case 146 -> 20;  // 2: Down
+            case 147 -> 93;  // 3: PageDown
+            case 148 -> 21;  // 4: Left
+            case 149 -> -1;  // 5: no action
+            case 150 -> 22;  // 6: Right
+            case 151 -> 122; // 7: Home
+            case 152 -> 19;  // 8: Up
+            case 153 -> 92;  // 9: PageUp
+            case 158 -> 112; // decimal: Delete
+            default -> throw new AssertionError(code);
+        };
+    }
+    private boolean releaseKeypad() {
+        boolean ok = true;
+        for (int code : new ArrayList<>(held.keySet())) if (isModeKeypad(code)) {
+            held.get(code).owners = 1;
+            if (!release(code)) ok = false;
+        }
+        // A finger held across the switch must lift before producing a new action.
+        pointers.replaceAll((id, code) -> isModeKeypad(code) ? -1 : code);
         return ok;
     }
     private boolean release(int code) {
         Press press = held.get(code);
         if (press == null) return true;
         if (--press.owners > 0) return true;
+        boolean ok = true;
+        if (numericMode() && modifier(code) != 0) ok = releaseKeypad();
         held.remove(code);
-        if (repeating != null && repeating == code) repeating = null;
-        return sink.send(new Event(code, false, meta(), press.started, clock.getAsLong(), 0));
+        if (press.output == null || --press.output.owners > 0) return ok;
+        outputs.remove(press.eventCode);
+        if (repeating != null && repeating == press.eventCode) repeating = null;
+        return sink.send(new Event(press.eventCode, false, meta(), press.output.started, clock.getAsLong(), 0)) && ok;
     }
     public void releaseAll() {
         repeating = null;
@@ -146,5 +220,5 @@ public final class KeyEngine {
         for (int code : codes) { held.get(code).owners = 1; release(code); }
         pointers.clear();
     }
-    public void resetSession() { releaseAll(); lockMeta = 0; }
+    public void resetSession() { releaseAll(); lockMeta = NUM_LOCK_ON; }
 }

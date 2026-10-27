@@ -43,6 +43,9 @@ public final class MainActivity extends Activity {
         button(column,"3  打开本机按键测试",v->startActivity(new Intent(this,DiagnosticActivity.class)));
         text(column,"在 Moonlight 中使用",21,Color.WHITE);
         text(column,"连接 Sunshine 后，在 Moonlight 串流画面用三指轻点呼出输入法（也可使用客户端的键盘入口）。远端 Windows 建议先使用英文 US 布局。",16,0xffc7d2df);
+        text(column,"数字与导航模式",21,Color.WHITE);
+        text(column,"默认 Num 为普通颜色，小键盘直接输入数字。点 Num 后灰显，0–9 和小数点改为导航功能（5 无操作）；再点恢复数字模式。Num 只控制本地模式，不切换远端 NumLock，普通输入在 Windows 和麒麟采用同一映射。",16,0xffc7d2df);
+        text(column,"数字模式下先按住或锁定 Shift / Alt / Ctrl / Win，再按小键盘，会保留原生小键盘键码；Shift 行为、Alt 数字码等仍取决于远端 NumLock、布局和应用。导航模式的 Shift / Ctrl 组合仍发送导航键。切换 Num 或在数字模式增减修饰键，会释放正按住的小键盘数字，请抬指再按；修饰键本身保持原有规则。",14,0xffc7d2df);
         text(column,"按下与弹起",21,Color.WHITE);
         Switch repeatSwitch=new Switch(this);
         repeatSwitch.setText("Moonlight 文本连发兼容"); repeatSwitch.setTextColor(Color.WHITE);
@@ -55,7 +58,7 @@ public final class MainActivity extends Activity {
         text(column,"悬浮与单手操作",21,Color.WHITE);
         text(column,"控件位于小键盘上方。按住「移动」拖动键盘；点「大小」进入调整模式，拖边改变宽高比例、拖角等比缩放，点「完成」恢复输入。\n\n「透明」打开滑条，左右拖动调整背景透明度，文字与键帽保留可读性；「收起」变为小浮条；「物理」切换修饰键锁定；「释放」松开全部按键。",16,0xffc7d2df);
         text(column,"使用边界",21,Color.WHITE);
-        text(column,"这是通过目标应用输入连接发送事件的输入法，不是系统级硬件注入。需要目标应用接收输入法事件；个别系统或 Moonlight 保留快捷键可能被拦截。锁定灯仅是本地提示，不能读取远端 Caps / Num / Scroll 状态。\n\n不提供拼音联想。无网络、无悬浮窗、无无障碍权限，不保存输入内容。键盘隐藏、失焦或旋转时会尽力释放按键；链路已断开时无法保证释放到达主机。",14,0xff94a8bf);
+        text(column,"这是通过目标应用输入连接发送事件的输入法，不是系统级硬件注入。需要目标应用接收输入法事件；个别系统或 Moonlight 保留快捷键可能被拦截。Caps / Scroll 锁定灯仅是本地提示，Num 颜色表示本地数字 / 导航模式；不能读取远端锁定状态。\n\n不提供拼音联想。无网络、无悬浮窗、无无障碍权限，不保存输入内容。键盘隐藏、失焦或旋转时会尽力释放按键；链路已断开时无法保证释放到达主机。",14,0xff94a8bf);
     }
     @Override protected void onResume() {
         super.onResume(); boolean enabled=false;

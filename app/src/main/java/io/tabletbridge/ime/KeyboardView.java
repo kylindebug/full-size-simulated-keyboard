@@ -139,12 +139,13 @@ public final class KeyboardView extends View {
         for(KeyboardLayout.Key key:layout.keys) {
             bounds(key);
             boolean lit=engine.isLit(KeyboardLayout.eventCode(key.code)),modifier=KeyEngine.modifier(key.code)!=0;
-            int fill=lit?0xffeab6d4:modifier?0xe0d5def7:0xd5f2f3ff;
+            boolean dimmed=engine.isDimmed(key.code);
+            int fill=dimmed?0xe0b9bdc8:lit?0xffeab6d4:modifier?0xe0d5def7:0xd5f2f3ff;
             surface(c,fill,lit?0xffbd7fae:0xd9ffffff,dp(6));
             String[] lines=key.label.split("\n",-1);
             float font=Math.min(dp(15),Math.min(unitX*.29f,unitY*.31f));
             if(lines.length==1 && key.label.length()>4) font=Math.min(font,box.width()/key.label.length()*1.6f);
-            int fg=0xff303956;
+            int fg=dimmed?0xff626877:0xff303956;
             if(lines.length==1) text(c,lines[0],box.centerX(),box.centerY(),font,fg);
             else {
                 text(c,lines[0],box.centerX(),box.centerY()-unitY*.18f,font,fg);
