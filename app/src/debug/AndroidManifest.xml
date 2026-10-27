@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application android:label="全键盘模拟·Num测试" tools:replace="android:label">
+        <service android:name="io.tabletbridge.ime.BridgeImeService" android:label="全键盘模拟·Num测试" tools:replace="android:label" />
+    </application>
+</manifest>

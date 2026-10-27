@@ -50,8 +50,10 @@ public class KeyEngineTest {
         assertFalse(engine.isHeld(57)); assertEquals(2,events.size());
     }
     @Test public void lockKeysToggleOncePerPress() {
-        engine.pointerDown(0,143); engine.pointerUp(0); assertEquals(0x200000,engine.meta());
-        engine.pointerDown(0,143); engine.pointerUp(0); assertEquals(0,engine.meta());
+        assertTrue(engine.isLit(143));
+        engine.pointerDown(0,143); engine.pointerUp(0); assertFalse(engine.isLit(143));
+        engine.pointerDown(0,143); engine.pointerUp(0); assertTrue(engine.isLit(143));
+        assertEquals(0,engine.meta()); assertTrue(events.isEmpty());
     }
     @Test public void sessionResetDoesNotCarryLocksToNextApp() {
         engine.pointerDown(1,115); engine.pointerDown(2,113); engine.resetSession();
@@ -96,7 +98,7 @@ public class KeyEngineTest {
         for(int code:new int[]{57,58,59,60,113,114,117,118,115,116,143,120,121,318}) {
             repeatSetup(); engine.pointerDown(1,code); int meta=engine.meta();
             time=5000; engine.repeat();
-            assertEquals("code "+code,1,events.size()); assertEquals(-1,engine.nextRepeatDelay());
+            assertEquals("code "+code,code==143?0:1,events.size()); assertEquals(-1,engine.nextRepeatDelay());
             assertEquals(meta,engine.meta());
         }
     }
@@ -181,5 +183,93 @@ public class KeyEngineTest {
         engine.setCompatibilityRepeat(true); engine.pointerDown(1,67);
         time=600; assertFalse(engine.repeat()); assertEquals(2,events.size());
         assertFalse(events.get(1).down); assertEquals(-1,engine.nextRepeatDelay());
+    }
+
+    @Test public void numericModeDefaultsOnAndMapsAllDigitsAndDecimal() {
+        assertTrue(engine.numericMode()); assertTrue(engine.isLit(143));
+        for(int code=144;code<=153;code++) {
+            engine.pointerDown(code,code); assertTrue(engine.isLit(code)); engine.pointerUp(code);
+            assertFalse(engine.isLit(code));
+            assertEquals(code-144+7,events.get(events.size()-2).code);
+            assertEquals(code-144+7,events.get(events.size()-1).code);
+        }
+        engine.pointerDown(1,158); engine.pointerUp(1);
+        assertEquals(56,events.get(events.size()-1).code);
+        for(KeyEngine.Event e:events) assertEquals(0,e.meta & 0x200000);
+    }
+    @Test public void grayModeMapsNavigationAndSuppressesFive() {
+        engine.pointerDown(0,143); engine.pointerUp(0);
+        assertFalse(engine.numericMode()); assertFalse(engine.isLit(143));
+        int[] codes={144,145,146,147,148,150,151,152,153,158};
+        int[] expected={124,123,20,93,21,22,122,19,92,112};
+        for(int i=0;i<codes.length;i++) {
+            engine.pointerDown(1,codes[i]); engine.pointerUp(1);
+            assertEquals(expected[i],events.get(events.size()-2).code);
+            assertEquals(expected[i],events.get(events.size()-1).code);
+        }
+        int size=events.size(); engine.pointerDown(1,149); assertTrue(engine.isLit(149));
+        engine.pointerUp(1); assertFalse(engine.isLit(149)); assertEquals(size,events.size());
+    }
+    @Test public void numModeSecondFingerAndDuplicateDownDoNotToggleAgain() {
+        engine.pointerDown(0,143); engine.pointerDown(0,143); engine.pointerDown(1,143);
+        assertFalse(engine.numericMode()); engine.pointerUp(0); assertFalse(engine.isLit(143));
+        engine.pointerUp(1); engine.pointerDown(2,143); assertTrue(engine.numericMode());
+        assertTrue(events.isEmpty());
+    }
+    @Test public void togglingWhileHeldKeepsBalancedMappedEventsAndRepeat() {
+        repeatSetup(); engine.pointerDown(1,145); // mapped 1
+        engine.pointerDown(2,143); engine.pointerUp(2);
+        time=600; engine.repeat(); assertEquals(8,events.get(1).code);
+        engine.pointerUp(1); assertEquals(8,events.get(2).code); assertFalse(events.get(2).down);
+        engine.pointerDown(1,145); assertEquals(123,events.get(3).code);
+        engine.pointerDown(2,143); engine.pointerUp(2);
+        engine.releaseAll(); assertEquals(123,events.get(4).code); assertFalse(events.get(4).down);
+        assertFalse(engine.isLit(145));
+    }
+    @Test public void mappedAndMainKeysShareOwnershipWithoutPrematureRelease() {
+        engine.pointerDown(1,8); engine.pointerDown(2,145); assertEquals(1,events.size());
+        engine.pointerUp(1); assertEquals(1,events.size()); assertTrue(engine.isLit(145));
+        engine.pointerUp(2); assertEquals(2,events.size()); assertFalse(events.get(1).down);
+        engine.pointerDown(0,143); engine.pointerUp(0);
+        engine.pointerDown(1,123); engine.pointerDown(2,145); assertEquals(3,events.size());
+        engine.pointerUp(2); assertEquals(3,events.size()); engine.pointerUp(1); assertEquals(4,events.size());
+    }
+    @Test public void numMappingPreservesModifiersAndOperators() {
+        engine.pointerDown(0,113); engine.pointerDown(1,59); engine.pointerDown(2,57);
+        engine.pointerDown(3,145); assertEquals(8,events.get(3).code);
+        assertEquals(0x3053,events.get(3).meta); engine.releaseAll(); events.clear();
+        for(int mode=0;mode<2;mode++) {
+            for(int code:new int[]{154,155,156,157,66}) {
+                engine.pointerDown(1,code); engine.pointerUp(1);
+                assertEquals(code,events.get(events.size()-1).code);
+            }
+            engine.pointerDown(0,143); engine.pointerUp(0);
+        }
+    }
+    @Test public void sessionResetRestoresNumericButReleaseAllKeepsChosenMode() {
+        engine.pointerDown(0,143); engine.pointerUp(0); engine.releaseAll();
+        assertFalse(engine.numericMode()); engine.setCompatibilityRepeat(true); assertFalse(engine.numericMode());
+        engine.resetSession(); assertTrue(engine.numericMode()); assertTrue(engine.isLit(143));
+    }
+    @Test public void grayFiveNeverRepeatsAndCompatibilityUsesMappedCode() {
+        repeatSetup(); engine.setCompatibilityRepeat(true);
+        engine.pointerDown(1,145); time=600; engine.repeat(); engine.pointerUp(1);
+        for(KeyEngine.Event event:events) { assertEquals(8,event.code); assertEquals(0,event.repeatCount); }
+        engine.pointerDown(0,143); engine.pointerUp(0); events.clear();
+        engine.pointerDown(1,149); assertEquals(-1,engine.nextRepeatDelay());
+        time=2000; engine.repeat(); engine.pointerUp(1); assertTrue(events.isEmpty());
+    }
+    @Test public void mappedKeysDoNotLightUnpressedDestinationKeys() {
+        engine.pointerDown(1,145); assertTrue(engine.isLit(145)); assertFalse(engine.isLit(8));
+        engine.pointerUp(1); engine.pointerDown(0,143); engine.pointerUp(0);
+        engine.pointerDown(1,151); assertTrue(engine.isLit(151)); assertFalse(engine.isLit(122));
+        engine.releaseAll(); assertFalse(engine.isLit(151));
+    }
+    @Test public void grayNavigationPreservesShiftSelectionAndControl() {
+        engine.pointerDown(0,143); engine.pointerUp(0);
+        engine.pointerDown(1,59); engine.pointerDown(2,113); engine.pointerDown(3,148);
+        assertEquals(21,events.get(2).code); assertEquals(0x3041,events.get(2).meta);
+        engine.pointerUp(3); assertEquals(21,events.get(3).code);
+        assertEquals(0x3041,events.get(3).meta); engine.releaseAll();
     }
 }

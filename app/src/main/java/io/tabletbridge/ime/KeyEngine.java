@@ -26,6 +26,10 @@ public final class KeyEngine {
     }
     private final Map<Integer, Press> held = new LinkedHashMap<>();
     private final Map<Integer, Integer> pointers = new HashMap<>();
+    // Keep visual/source keys separate from emitted keys. A key's mapping is frozen
+    // at DOWN so a mode change cannot send an unmatched UP or change a held repeat.
+    private final Map<Integer, Integer> sourceKeys = new HashMap<>();
+    private boolean numericMode = true;
     private final Sink sink;
     private final LongSupplier clock;
     private boolean sticky;
@@ -93,14 +97,50 @@ public final class KeyEngine {
     }
     public boolean isHeld(int code) { return held.containsKey(code); }
     public boolean isLit(int code) {
+        if (code == 143) return numericMode;
+        if (modifier(code) == 0 && code != 115 && code != 116) return sourceKeys.containsValue(code);
         return isHeld(code) || (code == 115 && (lockMeta & 0x100000) != 0)
-                || (code == 143 && (lockMeta & 0x200000) != 0)
                 || (code == 116 && (lockMeta & 0x400000) != 0);
+    }
+    public boolean numericMode() { return numericMode; }
+    /** Local Num mode, not a claim about the remote host's lock state.
+     * Digits use the number row and navigation uses dedicated keys, so neither
+     * depends on the host's NumLock setting. Other modifiers retain normal meaning.
+     */
+    private int mappedCode(int code) {
+        if (numericMode) {
+            if (code >= 144 && code <= 153) return 7 + code - 144; // 0..9
+            if (code == 158) return 56; // decimal -> period
+            return code;
+        }
+        return switch (code) {
+            case 144 -> 124; // 0 -> Insert
+            case 145 -> 123; // 1 -> End
+            case 146 -> 20;  // 2 -> Down
+            case 147 -> 93;  // 3 -> Page Down
+            case 148 -> 21;  // 4 -> Left
+            case 149 -> -1;  // 5 has no navigation action
+            case 150 -> 22;  // 6 -> Right
+            case 151 -> 122; // 7 -> Home
+            case 152 -> 19;  // 8 -> Up
+            case 153 -> 92;  // 9 -> Page Up
+            case 158 -> 112; // decimal -> Delete
+            default -> code;
+        };
     }
     public boolean sticky() { return sticky; }
     public void setSticky(boolean value) { releaseAll(); sticky = value; }
     public boolean pointerDown(int id, int code) {
         if (pointers.containsKey(id)) return true;
+        if (code == 143) {
+            if (!sourceKeys.containsValue(143)) numericMode = !numericMode;
+            sourceKeys.put(id, code);
+            pointers.put(id, -1);
+            return true; // Never toggle the remote host's unknown lock state.
+        }
+        sourceKeys.put(id, code);
+        code = mappedCode(code);
+        if (code < 0) { pointers.put(id, -1); return true; }
         if (sticky && modifier(code) != 0) {
             pointers.put(id, -1);
             if (isHeld(code)) return release(code);
@@ -110,6 +150,7 @@ public final class KeyEngine {
         return press(code);
     }
     public boolean pointerUp(int id) {
+        sourceKeys.remove(id);
         Integer code = pointers.remove(id);
         return code == null || code < 0 || release(code);
     }
@@ -119,7 +160,6 @@ public final class KeyEngine {
         long now = clock.getAsLong();
         held.put(code, new Press(now));
         if (code == 115) lockMeta ^= 0x100000;
-        if (code == 143) lockMeta ^= 0x200000;
         if (code == 116) lockMeta ^= 0x400000;
         boolean ok = sink.send(new Event(code, true, meta(), now, now, 0));
         if (isRepeatable(code)) {
@@ -145,6 +185,7 @@ public final class KeyEngine {
         codes.sort((a, b) -> Integer.compare(modifier(a) == 0 ? 0 : 1, modifier(b) == 0 ? 0 : 1));
         for (int code : codes) { held.get(code).owners = 1; release(code); }
         pointers.clear();
+        sourceKeys.clear();
     }
-    public void resetSession() { releaseAll(); lockMeta = 0; }
+    public void resetSession() { releaseAll(); lockMeta = 0; numericMode = true; }
 }

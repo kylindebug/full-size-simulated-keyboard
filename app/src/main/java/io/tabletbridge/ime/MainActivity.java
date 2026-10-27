@@ -38,11 +38,14 @@ public final class MainActivity extends Activity {
         text(column,"把平板变成全尺寸键盘",30,Color.WHITE);
         text(column,"为 Moonlight + Sunshine 远程桌面设计\n104 键 · 多指组合 · 可拖动悬浮",16,0xffb5c4d7);
         state=text(column,"",14,0xff69e2c2);
-        button(column,"1  启用「全键盘模拟」",v->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
-        button(column,"2  切换到「全键盘模拟」",v->((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showInputMethodPicker());
+        String appLabel=getApplicationInfo().loadLabel(getPackageManager()).toString();
+        button(column,"1  启用「"+appLabel+"」",v->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
+        button(column,"2  切换到「"+appLabel+"」",v->((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showInputMethodPicker());
         button(column,"3  打开本机按键测试",v->startActivity(new Intent(this,DiagnosticActivity.class)));
         text(column,"在 Moonlight 中使用",21,Color.WHITE);
         text(column,"连接 Sunshine 后，在 Moonlight 串流画面用三指轻点呼出输入法（也可使用客户端的键盘入口）。远端 Windows 建议先使用英文 US 布局。",16,0xffc7d2df);
+        text(column,"数字键盘",21,Color.WHITE);
+        text(column,"Num 默认与普通键同色，输入数字；点一下变灰（仍可点击），使用小键盘标注的导航功能，5 不输出。Num 只控制本键盘，不切换远端锁状态；重新呼出恢复数字模式。数字按主键区键码发送，Shift 等组合键和字符由远端布局解释，不支持原生小键盘 Alt 数字码。",14,0xffc7d2df);
         text(column,"按下与弹起",21,Color.WHITE);
         Switch repeatSwitch=new Switch(this);
         repeatSwitch.setText("Moonlight 文本连发兼容"); repeatSwitch.setTextColor(Color.WHITE);
@@ -55,7 +58,7 @@ public final class MainActivity extends Activity {
         text(column,"悬浮与单手操作",21,Color.WHITE);
         text(column,"控件位于小键盘上方。按住「移动」拖动键盘；点「大小」进入调整模式，拖边改变宽高比例、拖角等比缩放，点「完成」恢复输入。\n\n「透明」打开滑条，左右拖动调整背景透明度，文字与键帽保留可读性；「收起」变为小浮条；「物理」切换修饰键锁定；「释放」松开全部按键。",16,0xffc7d2df);
         text(column,"使用边界",21,Color.WHITE);
-        text(column,"这是通过目标应用输入连接发送事件的输入法，不是系统级硬件注入。需要目标应用接收输入法事件；个别系统或 Moonlight 保留快捷键可能被拦截。锁定灯仅是本地提示，不能读取远端 Caps / Num / Scroll 状态。\n\n不提供拼音联想。无网络、无悬浮窗、无无障碍权限，不保存输入内容。键盘隐藏、失焦或旋转时会尽力释放按键；链路已断开时无法保证释放到达主机。",14,0xff94a8bf);
+        text(column,"这是通过目标应用输入连接发送事件的输入法，不是系统级硬件注入。需要目标应用接收输入法事件；个别系统或 Moonlight 保留快捷键可能被拦截。Caps / Scroll 锁定灯仅是本地提示，不能读取远端锁状态。Num 颜色表示本键盘的数字/导航模式，不代表远端 NumLock。\n\n不提供拼音联想。无网络、无悬浮窗、无无障碍权限，不保存输入内容。键盘隐藏、失焦或旋转时会尽力释放按键；链路已断开时无法保证释放到达主机。",14,0xff94a8bf);
     }
     @Override protected void onResume() {
         super.onResume(); boolean enabled=false;
